@@ -4,7 +4,9 @@ TaskHub is a Flutter student planner with a weekly class schedule, deadlines,
 custom subject colors and icons, and the AITU campus map.
 
 Schedule and deadlines are stored **on this device** using SharedPreferences.
-There is no account, cloud sync, server, or Firebase configuration.
+The Flutter client currently has no account sign-in or cloud sync. A separate
+account and planner API is available in [`backend/README.md`](backend/README.md);
+the client is not yet connected to it. There is no Firebase configuration.
 
 ## Requirements
 
