@@ -7,6 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'deadline_reminders.dart';
+import 'group_hub.dart';
 
 const Color kMilk = Color(0xFFF7F4ED);
 const Color kCard = Color(0xFFFFFDF8);
@@ -65,6 +66,20 @@ class _TaskHubAppState extends State<TaskHubApp> {
   bool _loading = true;
   List<Lesson> _lessons = <Lesson>[];
   List<DeadlineItem> _deadlines = <DeadlineItem>[];
+  List<DeadlineItem> _groupDeadlines = <DeadlineItem>[];
+
+  Future<void> _syncReminders() async {
+    try {
+      await DeadlineReminders.sync(<DeadlineItem>[..._deadlines, ..._groupDeadlines]);
+    } catch (error) {
+      debugPrint('Could not schedule deadline reminders: $error');
+    }
+  }
+
+  void _setGroupDeadlines(List<DeadlineItem> items) {
+    _groupDeadlines = items;
+    _syncReminders();
+  }
 
   @override
   void initState() {
@@ -90,11 +105,7 @@ class _TaskHubAppState extends State<TaskHubApp> {
           .toList();
       _loading = false;
     });
-    try {
-      await DeadlineReminders.sync(_deadlines);
-    } catch (error) {
-      debugPrint('Could not schedule deadline reminders: $error');
-    }
+    await _syncReminders();
   }
 
   Future<void> _saveLessons() async {
@@ -111,11 +122,7 @@ class _TaskHubAppState extends State<TaskHubApp> {
       'taskhub_deadlines',
       jsonEncode(_deadlines.map((DeadlineItem e) => e.toJson()).toList()),
     );
-    try {
-      await DeadlineReminders.sync(_deadlines);
-    } catch (error) {
-      debugPrint('Could not schedule deadline reminders: $error');
-    }
+    await _syncReminders();
   }
 
   Future<void> _addLesson(Lesson lesson) async {
@@ -211,6 +218,7 @@ class _TaskHubAppState extends State<TaskHubApp> {
                       onDelete: _deleteDeadline,
                     ),
                     const MapPage(),
+                    GroupHubPage(onDeadlinesChanged: _setGroupDeadlines),
                   ],
                 ),
               ),
@@ -236,6 +244,11 @@ class _TaskHubAppState extends State<TaskHubApp> {
                     icon: Icon(Icons.map_outlined),
                     selectedIcon: Icon(Icons.map_rounded),
                     label: 'Map',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.groups_outlined),
+                    selectedIcon: Icon(Icons.groups_rounded),
+                    label: 'Groups',
                   ),
                 ],
               ),

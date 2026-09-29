@@ -34,6 +34,14 @@ All request bodies use `Content-Type: application/json`; responses are JSON.
 | POST | `/api/v1/auth/logout` | Revoke the current token |
 | GET | `/api/v1/state` | Get planner and its `revision` |
 | PUT | `/api/v1/state` | Replace planner, with the revision from the last GET |
+| POST | `/api/v1/groups` | Create group from `{"name":"CS-2401"}`; returns an invitation code |
+| POST | `/api/v1/groups/join` | Join from `{"inviteCode":"..."}` |
+| GET | `/api/v1/groups` | List memberships; owners also see invite codes |
+| GET | `/api/v1/groups/{id}/state` | Read that group's classes and deadlines |
+| PUT | `/api/v1/groups/{id}/state` | Owner publishes classes and deadlines with revision |
+| PUT | `/api/v1/groups/{id}/deadlines/{deadlineId}/completion` | Mark shared deadline complete for the current user |
+| POST | `/api/v1/groups/{id}/leave` | Member leaves group |
+| GET | `/api/v1/feed` | Personal planner and all joined group planners |
 
 Register/login return `token`, `expiresIn` (seconds), and `user`. Other private
 requests require `Authorization: Bearer <token>`. A token expires after 30 days.
@@ -47,6 +55,20 @@ If another device already wrote a new revision, PUT returns HTTP 409
 `revision_conflict`; GET the new state and ask the user how to reconcile it.
 A 401 means the token is absent, invalid or expired.
 
-The Flutter app currently keeps data in SharedPreferences; it has **not yet
-been wired to this API**. Installing and starting the server alone will not
-sync data from the app. This API is the backend contract for that client work.
+## Groups
+
+Each group has one owner who fills its weekly classes and deadlines. Creating a
+group generates a 12-character invite code. A user joins with that code and
+immediately sees the group's data in `GET /api/v1/feed`. Only members can read
+group data; only the owner can replace it. A user may join several groups,
+each with a different timetable. The group PUT uses the same `revision`,
+`lessons`, `deadlines` shape as the personal PUT, with its own revision.
+
+Group deadlines are shared, but completion is personal: PUT
+`{"completed":true}` to the completion endpoint. The feed overlays that user's
+completion value; another member's checkbox is unaffected. Group owners cannot
+leave their own group. Removing a deadline clears its completion records.
+
+The Flutter Groups tab uses these endpoints. The original personal Schedule and
+Deadlines tabs still keep their data in SharedPreferences; personal cloud sync
+is not wired up yet.

@@ -70,3 +70,66 @@ class ApiTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class GroupTest(unittest.TestCase):
+    setUp = ApiTest.setUp
+    tearDown = ApiTest.tearDown
+    request = ApiTest.request
+
+    def test_group_join_shared_schedule_personal_completion_and_access(self):
+        owner = self.request('POST', '/api/v1/auth/register',
+                             {'email': 'owner@example.com', 'password': 'owner password 123'})[1]['token']
+        member = self.request('POST', '/api/v1/auth/register',
+                              {'email': 'member@example.com', 'password': 'member password 123'})[1]['token']
+        outsider = self.request('POST', '/api/v1/auth/register',
+                                {'email': 'other@example.com', 'password': 'other password 123'})[1]['token']
+        created = self.request('POST', '/api/v1/groups', {'name': 'CS-2401'}, owner)
+        self.assertEqual(created[0], 201)
+        group = created[1]
+        route = '/api/v1/groups/' + str(group['id'])
+        self.assertEqual(self.request('GET', route + '/state', token=outsider)[0], 404)
+        self.assertEqual(self.request('POST', '/api/v1/groups/join',
+                                     {'inviteCode': group['inviteCode']}, member)[0], 200)
+        lesson = {'id': 'lesson-1', 'day': 'Monday', 'subject': 'Math', 'room': '201',
+                  'start': '09:00', 'end': '10:00', 'colorValue': 123, 'iconCodePoint': 456}
+        deadline = {'id': 'task-1', 'title': 'Quiz', 'subject': 'Math', 'due': '2026-10-01T12:00:00',
+                    'completed': False, 'colorValue': 123, 'iconCodePoint': 456}
+        state = {'revision': 0, 'lessons': [lesson], 'deadlines': [deadline]}
+        self.assertEqual(self.request('PUT', route + '/state', state, member)[0], 403)
+        self.assertEqual(self.request('PUT', route + '/deadlines/task-1/completion',
+                                     {'completed': True}, outsider)[0], 404)
+        self.assertEqual(self.request('PUT', route + '/state', state, owner)[1]['revision'], 1)
+        self.assertEqual(self.request('PUT', route + '/state', state, owner)[0], 409)
+        feed = self.request('GET', '/api/v1/feed', token=member)[1]
+        self.assertEqual(feed['groups'][0]['lessons'], [lesson])
+        self.assertFalse(feed['groups'][0]['deadlines'][0]['completed'])
+        self.assertEqual(self.request('PUT', route + '/deadlines/task-1/completion',
+                                     {'completed': True}, member)[0], 200)
+        self.assertTrue(self.request('GET', '/api/v1/feed', token=member)[1]
+                        ['groups'][0]['deadlines'][0]['completed'])
+        self.assertFalse(self.request('GET', '/api/v1/feed', token=owner)[1]
+                         ['groups'][0]['deadlines'][0]['completed'])
+        self.assertEqual(self.request('POST', route + '/leave', token=owner)[0], 403)
+        self.assertEqual(self.request('POST', route + '/leave', token=member)[0], 200)
+        self.assertEqual(self.request('GET', '/api/v1/feed', token=member)[1]['groups'], [])
+
+    def test_separate_group_timetables(self):
+        owner = self.request('POST', '/api/v1/auth/register',
+                             {'email': 'owner@example.com', 'password': 'owner password 123'})[1]['token']
+        member = self.request('POST', '/api/v1/auth/register',
+                              {'email': 'member@example.com', 'password': 'member password 123'})[1]['token']
+        first = self.request('POST', '/api/v1/groups', {'name': 'Group A'}, owner)[1]
+        second = self.request('POST', '/api/v1/groups', {'name': 'Group B'}, owner)[1]
+        for group in (first, second):
+            self.assertEqual(self.request('POST', '/api/v1/groups/join',
+                                          {'inviteCode': group['inviteCode']}, member)[0], 200)
+            lesson = {'id': str(group['id']), 'day': 'Monday', 'subject': group['name'],
+                      'room': '1', 'start': '09:00', 'end': '10:00',
+                      'colorValue': 123, 'iconCodePoint': 456}
+            self.assertEqual(self.request('PUT',
+                           f"/api/v1/groups/{group['id']}/state",
+                           {'revision': 0, 'lessons': [lesson], 'deadlines': []}, owner)[0], 200)
+        groups = self.request('GET', '/api/v1/feed', token=member)[1]['groups']
+        self.assertEqual({g['name']: g['lessons'][0]['subject'] for g in groups},
+                         {'Group A': 'Group A', 'Group B': 'Group B'})

@@ -40,6 +40,8 @@ dependencies:
   flutter_local_notifications: ^19.5.0
   flutter_timezone: ^5.0.2
   timezone: ^0.10.1
+  http: ^1.5.0
+  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:

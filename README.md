@@ -4,9 +4,9 @@ TaskHub is a Flutter student planner with a weekly class schedule, deadlines,
 custom subject colors and icons, and the AITU campus map.
 
 Schedule and deadlines are stored **on this device** using SharedPreferences.
-The Flutter client currently has no account sign-in or cloud sync. A separate
-account and planner API is available in [`backend/README.md`](backend/README.md);
-the client is not yet connected to it. There is no Firebase configuration.
+The personal Schedule and Deadlines tabs use local SharedPreferences. The Groups
+tab connects to the account and group API described in
+[`backend/README.md`](backend/README.md). There is no Firebase configuration.
 
 ## Requirements
 
@@ -16,6 +16,12 @@ the client is not yet connected to it. There is no Firebase configuration.
   Windows requires Visual Studio C++ desktop tools; Linux requires the Flutter
   Linux desktop dependencies.
 - Internet access for package downloads and the AITU map.
+- To use Groups, start the backend and set its URL with
+  `--dart-define=TASKHUB_API_URL=http://10.0.2.2:8000` for an Android emulator.
+  For Windows/Linux/macOS desktop on the same machine use
+  `http://127.0.0.1:8000`. A physical phone needs your computer's LAN address
+  and `TASKHUB_HOST=0.0.0.0`. iOS and production builds should use an HTTPS URL;
+  the Android debug build alone allows cleartext HTTP for local development.
 
 ## Run
 
@@ -47,6 +53,10 @@ Gradle commands from an unrelated Android project do not build this app.
   or deleting a deadline updates the schedule. Exact delivery can vary with
   system power settings. Windows, Linux and web currently do not schedule
   deadline notifications.
+- Group owners add classes and deadlines in the Groups tab; other members join
+  by invite code and can mark a shared deadline complete for themselves.
+  Group data comes from the backend. The personal Schedule/Deadlines tabs are
+  still local to this device.
 - Data lives only in this app's local storage; uninstalling the app can remove
   it. The schedule's “Import / create” button opens the manual class editor;
   importing a file is not implemented.

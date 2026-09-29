@@ -83,6 +83,28 @@ def initialize(path: Path = DB_PATH):
                 lessons TEXT NOT NULL DEFAULT '[]',
                 deadlines TEXT NOT NULL DEFAULT '[]'
             );
+            CREATE TABLE IF NOT EXISTS groups (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                invite_code TEXT NOT NULL UNIQUE,
+                owner_id INTEGER NOT NULL REFERENCES users(id),
+                revision INTEGER NOT NULL DEFAULT 0,
+                lessons TEXT NOT NULL DEFAULT '[]',
+                deadlines TEXT NOT NULL DEFAULT '[]'
+            );
+            CREATE TABLE IF NOT EXISTS group_members (
+                group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                PRIMARY KEY(group_id, user_id)
+            );
+            CREATE TABLE IF NOT EXISTS group_deadline_completions (
+                group_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                deadline_id TEXT NOT NULL,
+                completed INTEGER NOT NULL CHECK(completed IN (0, 1)),
+                PRIMARY KEY(group_id, user_id, deadline_id),
+                FOREIGN KEY(group_id, user_id) REFERENCES group_members(group_id, user_id) ON DELETE CASCADE
+            );
         """)
 
 
@@ -186,11 +208,12 @@ def make_handler(path: Path = DB_PATH):
                     return self._send(201 if route.endswith("register") else 200,
                                       {"token": token, "expiresIn": SESSION_LIFETIME,
                                        "user": {"id": user_id, "email": email}})
-            if route in ("/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/state"):
+            if route.startswith("/api/v1/"):
                 with database(path) as db:
                     user = self._user(db)
                     if user is None:
                         return self._send(401, {"error": "unauthorized"})
+                    user_id = user["id"]
                     if (method, route) == ("GET", "/api/v1/auth/me"):
                         return self._send(200, {"id": user["id"], "email": user["email"]})
                     if (method, route) == ("POST", "/api/v1/auth/logout"):
@@ -220,6 +243,138 @@ def make_handler(path: Path = DB_PATH):
                         if cursor.rowcount == 0:
                             return self._send(409, {"error": "revision_conflict"})
                         return self._send(200, {"revision": data["revision"] + 1})
+                    if route == "/api/v1/groups" and method == "POST":
+                        name = self._body().get("name")
+                        if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
+                            return self._send(400, {"error": "invalid_name"})
+                        for _ in range(5):
+                            code = secrets.token_hex(6).upper()
+                            try:
+                                cursor = db.execute(
+                                    "INSERT INTO groups(name,invite_code,owner_id) VALUES(?,?,?)",
+                                    (name.strip(), code, user_id),
+                                )
+                                break
+                            except sqlite3.IntegrityError:
+                                continue
+                        else:
+                            return self._send(500, {"error": "invite_code_unavailable"})
+                        group_id = cursor.lastrowid
+                        db.execute("INSERT INTO group_members(group_id,user_id) VALUES(?,?)",
+                                   (group_id, user_id))
+                        return self._send(201, {"id": group_id, "name": name.strip(),
+                                                "role": "owner", "inviteCode": code})
+                    if route == "/api/v1/groups/join" and method == "POST":
+                        code = self._body().get("inviteCode")
+                        if not isinstance(code, str) or not re.fullmatch(r"[0-9A-Fa-f]{12}", code):
+                            return self._send(400, {"error": "invalid_invite_code"})
+                        group = db.execute("SELECT id,name,owner_id FROM groups WHERE invite_code=?",
+                                           (code.upper(),)).fetchone()
+                        if group is None:
+                            return self._send(404, {"error": "group_not_found"})
+                        try:
+                            db.execute("INSERT INTO group_members(group_id,user_id) VALUES(?,?)",
+                                       (group["id"], user_id))
+                        except sqlite3.IntegrityError:
+                            return self._send(409, {"error": "already_member"})
+                        return self._send(200, {"id": group["id"], "name": group["name"],
+                                                "role": "member"})
+                    if route == "/api/v1/groups" and method == "GET":
+                        rows = db.execute(
+                            "SELECT g.id,g.name,g.owner_id,g.invite_code FROM groups g "
+                            "JOIN group_members m ON m.group_id=g.id WHERE m.user_id=? ORDER BY g.name,g.id",
+                            (user_id,),
+                        ).fetchall()
+                        return self._send(200, {"groups": [
+                            {"id": row["id"], "name": row["name"],
+                             "role": "owner" if row["owner_id"] == user_id else "member",
+                             **({"inviteCode": row["invite_code"]} if row["owner_id"] == user_id else {})}
+                            for row in rows]})
+                    if route == "/api/v1/feed" and method == "GET":
+                        personal = db.execute("SELECT * FROM planner WHERE user_id=?", (user_id,)).fetchone()
+                        group_rows = db.execute(
+                            "SELECT g.* FROM groups g JOIN group_members m ON m.group_id=g.id "
+                            "WHERE m.user_id=? ORDER BY g.name,g.id", (user_id,),
+                        ).fetchall()
+                        groups = []
+                        for group in group_rows:
+                            completed = {row["deadline_id"] for row in db.execute(
+                                "SELECT deadline_id FROM group_deadline_completions "
+                                "WHERE group_id=? AND user_id=? AND completed=1",
+                                (group["id"], user_id),
+                            )}
+                            deadlines = json.loads(group["deadlines"])
+                            for item in deadlines:
+                                item["completed"] = item["id"] in completed
+                            groups.append({"id": group["id"], "name": group["name"],
+                                           "revision": group["revision"],
+                                           "lessons": json.loads(group["lessons"]),
+                                           "deadlines": deadlines})
+                        return self._send(200, {"personal": {
+                            "revision": personal["revision"],
+                            "lessons": json.loads(personal["lessons"]),
+                            "deadlines": json.loads(personal["deadlines"])},
+                            "groups": groups})
+                    match = re.fullmatch(r"/api/v1/groups/([1-9]\d*)(?:/(state|leave|deadlines/([^/]+)/completion))?", route)
+                    if match:
+                        group_id = int(match.group(1))
+                        action = match.group(2)
+                        group = db.execute(
+                            "SELECT g.* FROM groups g JOIN group_members m ON m.group_id=g.id "
+                            "WHERE g.id=? AND m.user_id=?", (group_id, user_id),
+                        ).fetchone()
+                        if group is None:
+                            return self._send(404, {"error": "group_not_found"})
+                        if action == "leave" and method == "POST":
+                            if group["owner_id"] == user_id:
+                                return self._send(403, {"error": "owner_cannot_leave"})
+                            db.execute("DELETE FROM group_members WHERE group_id=? AND user_id=?",
+                                       (group_id, user_id))
+                            return self._send(200, {"ok": True})
+                        if action == "state" and method == "GET":
+                            return self._send(200, {"revision": group["revision"],
+                                                    "lessons": json.loads(group["lessons"]),
+                                                    "deadlines": json.loads(group["deadlines"])})
+                        if action == "state" and method == "PUT":
+                            if group["owner_id"] != user_id:
+                                return self._send(403, {"error": "owner_only"})
+                            data = self._body()
+                            if type(data.get("revision")) is not int or data["revision"] < 0:
+                                return self._send(400, {"error": "invalid_revision"})
+                            for key in ("lessons", "deadlines"):
+                                if not valid_items(data.get(key), key):
+                                    return self._send(400, {"error": "invalid_" + key})
+                            if any(item["completed"] for item in data["deadlines"]):
+                                return self._send(400, {"error": "group_deadlines_must_start_incomplete"})
+                            cursor = db.execute(
+                                "UPDATE groups SET revision=revision+1,lessons=?,deadlines=? "
+                                "WHERE id=? AND revision=?",
+                                (json.dumps(data["lessons"]), json.dumps(data["deadlines"]),
+                                 group_id, data["revision"]),
+                            )
+                            if cursor.rowcount == 0:
+                                return self._send(409, {"error": "revision_conflict"})
+                            current_ids = [item["id"] for item in data["deadlines"]]
+                            for row in db.execute("SELECT DISTINCT deadline_id FROM group_deadline_completions WHERE group_id=?",
+                                                  (group_id,)).fetchall():
+                                if row["deadline_id"] not in current_ids:
+                                    db.execute("DELETE FROM group_deadline_completions WHERE group_id=? AND deadline_id=?",
+                                               (group_id, row["deadline_id"]))
+                            return self._send(200, {"revision": data["revision"] + 1})
+                        if action and action.startswith("deadlines/") and method == "PUT":
+                            deadline_id = match.group(3)
+                            if not any(item["id"] == deadline_id for item in json.loads(group["deadlines"])):
+                                return self._send(404, {"error": "deadline_not_found"})
+                            completed = self._body().get("completed")
+                            if type(completed) is not bool:
+                                return self._send(400, {"error": "invalid_completed"})
+                            db.execute(
+                                "INSERT INTO group_deadline_completions(group_id,user_id,deadline_id,completed) "
+                                "VALUES(?,?,?,?) ON CONFLICT(group_id,user_id,deadline_id) "
+                                "DO UPDATE SET completed=excluded.completed",
+                                (group_id, user_id, deadline_id, int(completed)),
+                            )
+                            return self._send(200, {"completed": completed})
             return self._send(404, {"error": "not_found"})
 
         def do_GET(self):
