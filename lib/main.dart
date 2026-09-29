@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'deadline_reminders.dart';
 
 const Color kMilk = Color(0xFFF7F4ED);
 const Color kCard = Color(0xFFFFFDF8);
@@ -86,6 +90,11 @@ class _TaskHubAppState extends State<TaskHubApp> {
           .toList();
       _loading = false;
     });
+    try {
+      await DeadlineReminders.sync(_deadlines);
+    } catch (error) {
+      debugPrint('Could not schedule deadline reminders: $error');
+    }
   }
 
   Future<void> _saveLessons() async {
@@ -102,6 +111,11 @@ class _TaskHubAppState extends State<TaskHubApp> {
       'taskhub_deadlines',
       jsonEncode(_deadlines.map((DeadlineItem e) => e.toJson()).toList()),
     );
+    try {
+      await DeadlineReminders.sync(_deadlines);
+    } catch (error) {
+      debugPrint('Could not schedule deadline reminders: $error');
+    }
   }
 
   Future<void> _addLesson(Lesson lesson) async {
@@ -121,6 +135,11 @@ class _TaskHubAppState extends State<TaskHubApp> {
 
   Future<void> _addDeadline(DeadlineItem item) async {
     setState(() => _deadlines = <DeadlineItem>[..._deadlines, item]);
+    try {
+      await DeadlineReminders.requestPermission();
+    } catch (error) {
+      debugPrint('Could not request notification permission: $error');
+    }
     await _saveDeadlines();
   }
 
@@ -1240,12 +1259,18 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
-  late final WebViewController _controller;
+  static final Uri _mapUrl = Uri.parse('https://yuujiso.github.io/aitumap');
+  WebViewController? _controller;
   int _progress = 0;
 
   @override
   void initState() {
     super.initState();
+
+    // webview_flutter supports Android/iOS/macOS. Open the desktop map in a
+    // browser on Linux and Windows, where no WebView implementation is bundled.
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.windows) return;
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -1257,7 +1282,15 @@ class _MapPageState extends State<MapPage> {
           },
         ),
       )
-      ..loadRequest(Uri.parse('https://yuujiso.github.io/aitumap'));
+      ..loadRequest(_mapUrl);
+  }
+
+  Future<void> _openMap() async {
+    if (!await launchUrl(_mapUrl, mode: LaunchMode.externalApplication) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the map in a browser')),
+      );
+    }
   }
 
   @override
@@ -1280,13 +1313,14 @@ class _MapPageState extends State<MapPage> {
               ),
               IconButton.filledTonal(
                 tooltip: 'Reload',
-                onPressed: _controller.reload,
-                icon: const Icon(Icons.refresh_rounded),
+                onPressed: _controller?.reload ?? _openMap,
+                icon: Icon(_controller == null
+                    ? Icons.open_in_browser_rounded : Icons.refresh_rounded),
               ),
             ],
           ),
         ),
-        if (_progress < 100)
+        if (_controller != null && _progress < 100)
           LinearProgressIndicator(
             value: _progress == 0 ? null : _progress / 100,
           ),
@@ -1299,7 +1333,13 @@ class _MapPageState extends State<MapPage> {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: const Color(0xFFE5E0D6)),
             ),
-            child: WebViewWidget(controller: _controller),
+            child: _controller == null
+                ? Center(child: FilledButton.icon(
+                    onPressed: _openMap,
+                    icon: const Icon(Icons.open_in_browser_rounded),
+                    label: const Text('Open AITU map in browser'),
+                  ))
+                : WebViewWidget(controller: _controller!),
           ),
         ),
       ],
