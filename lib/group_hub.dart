@@ -112,14 +112,16 @@ class _GroupHubPageState extends State<GroupHubPage> {
       if (_api.token == null) {
         widget.onDeadlinesChanged([]);
       }
-      if (mounted) setState(() {
-        _error = error.toString();
-        if (_api.token == null) {
-          _groups = [];
-          _selected = null;
-          _state = null;
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _error = error.toString();
+          if (_api.token == null) {
+            _groups = [];
+            _selected = null;
+            _state = null;
+          }
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -147,11 +149,13 @@ class _GroupHubPageState extends State<GroupHubPage> {
       }
     }
     widget.onDeadlinesChanged(deadlines);
-    if (mounted) setState(() {
-      _groups = groups;
-      _selected = selected;
-      _completion..clear()..addAll(completions);
-    });
+    if (mounted) {
+      setState(() {
+        _groups = groups;
+        _selected = selected;
+        _completion..clear()..addAll(completions);
+      });
+    }
     if (selected != null) {
       await _loadSelected();
     }
