@@ -103,3 +103,17 @@ with systemd and allow inbound ports 80 and 443.
 Release builds need your own application ID and signing configuration:
 `android/app/build.gradle.kts` still uses `com.example.taskhub` and debug
 signing for release. Configure these before distributing the APK.
+
+### GitHub Pages preview
+
+The `pages-preview.yml` workflow builds the web app with the correct
+`/Android-TaskHub/` base path and publishes it to the `gh-pages` branch.
+In repository Settings → Pages, choose **Deploy from a branch**, branch
+`gh-pages`, folder `/ (root)`. The preview URL will be
+`https://alikhansabargazy.github.io/Android-TaskHub/`.
+
+GitHub Pages only hosts static files: the personal Schedule and Deadlines tabs
+work in that browser, and the map opens externally. Groups and sign-in need a
+separate HTTPS API. For a complete Pages deployment, build with
+`--dart-define=TASKHUB_API_URL=https://your-api-domain` and configure
+`TASKHUB_CORS_ORIGIN=https://alikhansabargazy.github.io` on the API server.

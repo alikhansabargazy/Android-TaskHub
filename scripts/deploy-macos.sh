@@ -28,7 +28,7 @@ flutter test
 flutter build web --release
 python3 -m unittest discover -s backend/tests -q
 
-ARCHIVE="$(mktemp -t taskhub-release).tar.gz"
+ARCHIVE="$(mktemp -t taskhub-release)"
 trap 'rm -f "$ARCHIVE"' EXIT
 tar -czf "$ARCHIVE" -C "$PROJECT_ROOT" backend -C "$PROJECT_ROOT/build" web
 
@@ -48,6 +48,11 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq python3 caddy
+python3 - <<'PY'
+import sys
+if sys.version_info < (3, 10):
+    raise SystemExit('TaskHub API requires Python 3.10 or newer on the VPS.')
+PY
 
 id taskhub >/dev/null 2>&1 || useradd --system --home-dir /var/lib/taskhub --shell /usr/sbin/nologin taskhub
 install -d -o taskhub -g taskhub -m 750 /var/lib/taskhub
@@ -104,10 +109,21 @@ systemctl enable --now taskhub.service
 systemctl restart taskhub.service
 systemctl enable --now caddy.service
 systemctl restart caddy.service
-curl --fail --silent http://127.0.0.1:8000/health
+for attempt in 1 2 3 4 5; do
+  if curl --fail --silent http://127.0.0.1:8000/health; then break; fi
+  sleep 2
+done
+curl --fail --silent http://127.0.0.1:8000/health >/dev/null
 printf '\nDeployed: https://%s\n' "$DOMAIN"
 REMOTE
 
 printf '\nChecking public HTTPS endpoint...\n'
-curl --fail --show-error --max-time 45 "https://$DEPLOY_DOMAIN/health"
-printf '\nTaskHub is available at https://%s\n' "$DEPLOY_DOMAIN"
+for attempt in 1 2 3 4 5 6; do
+  if curl --fail --silent --show-error --max-time 15 "https://$DEPLOY_DOMAIN/health"; then
+    printf '\nTaskHub is available at https://%s\n' "$DEPLOY_DOMAIN"
+    exit 0
+  fi
+  sleep 5
+done
+echo "Deployment finished, but public HTTPS is not ready. Check DNS, ports 80/443 and Caddy logs." >&2
+exit 1

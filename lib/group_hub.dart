@@ -9,6 +9,9 @@ import 'main.dart';
 
 const String _configuredApiUrl = String.fromEnvironment('TASKHUB_API_URL');
 
+bool get _pagesDemoWithoutApi =>
+    kIsWeb && Uri.base.host.endsWith('.github.io') && _configuredApiUrl.isEmpty;
+
 String get taskHubApiUrl => _configuredApiUrl.isNotEmpty
     ? _configuredApiUrl.replaceFirst(RegExp(r'/$'), '')
     : kIsWeb
@@ -102,7 +105,9 @@ class _GroupHubPageState extends State<GroupHubPage> {
   @override
   void initState() {
     super.initState();
-    _restore();
+    if (!_pagesDemoWithoutApi) {
+      _restore();
+    }
   }
 
   @override
@@ -253,6 +258,25 @@ class _GroupHubPageState extends State<GroupHubPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_pagesDemoWithoutApi) {
+      return Column(
+        children: <Widget>[
+          const TaskHubHeader(subtitle: 'Shared class groups'),
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'This GitHub Pages preview shows the app interface. '
+                  'Group accounts need a separately hosted HTTPS API.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     final owner = _selected?['role'] == 'owner';
     final lessons = (_state?['lessons'] as List? ?? [])
         .map((e) => Lesson.fromJson(e as Map<String, dynamic>))
