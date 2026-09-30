@@ -49,6 +49,15 @@ const List<IconData> kSubjectIcons = <IconData>[
   Icons.design_services_rounded,
 ];
 
+IconData subjectIcon(int codePoint) {
+  for (final icon in kSubjectIcons) {
+    if (icon.codePoint == codePoint) {
+      return icon;
+    }
+  }
+  return Icons.flag_rounded;
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const TaskHubApp());
@@ -312,7 +321,7 @@ class _SchedulePageState extends State<SchedulePage> {
             padding: const EdgeInsets.symmetric(horizontal: 18),
             scrollDirection: Axis.horizontal,
             itemCount: kDays.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (BuildContext context, int index) {
               final bool selected = index == _selectedDay;
               return ChoiceChip(
@@ -500,10 +509,7 @@ class LessonCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color color = Color(lesson.colorValue);
-    final IconData icon = IconData(
-      lesson.iconCodePoint,
-      fontFamily: 'MaterialIcons',
-    );
+    final IconData icon = subjectIcon(lesson.iconCodePoint);
 
     return Container(
       decoration: BoxDecoration(
@@ -957,7 +963,7 @@ class DeadlinesPage extends StatelessWidget {
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(18, 4, 18, 100),
                   itemCount: sorted.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (BuildContext context, int index) {
                     final DeadlineItem item = sorted[index];
                     return DeadlineCard(
@@ -1013,10 +1019,7 @@ class DeadlineCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(
-                IconData(
-                  item.iconCodePoint,
-                  fontFamily: 'MaterialIcons',
-                ),
+                subjectIcon(item.iconCodePoint),
                 color: color,
               ),
             ),
@@ -1283,7 +1286,9 @@ class _MapPageState extends State<MapPage> {
     // webview_flutter supports Android/iOS/macOS. Open the desktop map in a
     // browser on Linux and Windows, where no WebView implementation is bundled.
     if (kIsWeb || defaultTargetPlatform == TargetPlatform.linux ||
-        defaultTargetPlatform == TargetPlatform.windows) return;
+        defaultTargetPlatform == TargetPlatform.windows) {
+      return;
+    }
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)

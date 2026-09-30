@@ -109,7 +109,9 @@ class _GroupHubPageState extends State<GroupHubPage> {
     try {
       await action();
     } catch (error) {
-      if (_api.token == null) widget.onDeadlinesChanged([]);
+      if (_api.token == null) {
+        widget.onDeadlinesChanged([]);
+      }
       if (mounted) setState(() {
         _error = error.toString();
         if (_api.token == null) {
@@ -150,7 +152,9 @@ class _GroupHubPageState extends State<GroupHubPage> {
       _selected = selected;
       _completion..clear()..addAll(completions);
     });
-    if (selected != null) await _loadSelected();
+    if (selected != null) {
+      await _loadSelected();
+    }
   }
 
   Future<void> _loadSelected() async {
