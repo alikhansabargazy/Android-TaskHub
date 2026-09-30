@@ -61,6 +61,45 @@ Gradle commands from an unrelated Android project do not build this app.
   it. The schedule's “Import / create” button opens the manual class editor;
   importing a file is not implemented.
 
+## Web version
+
+Build the browser app and serve it together with the API from the repository root:
+
+```bash
+flutter pub get
+flutter build web --release
+TASKHUB_DB=./data/taskhub.sqlite3 TASKHUB_WEB_DIR=./build/web python3 -m backend.app
+```
+
+Open `http://127.0.0.1:8000`. The web app uses the same origin for API calls,
+so no separate CORS configuration is needed. On a wide screen it displays a
+side navigation rail; on a narrow screen it uses bottom navigation. The map
+opens in a new browser tab. On the web, local deadline notifications are not
+available. Personal schedule and deadlines are kept in this browser's local
+storage; the Groups tab uses the server.
+
+For a public deployment, place the server behind an HTTPS reverse proxy and
+set `TASKHUB_HOST=127.0.0.1`. Browser secure token storage and account login
+require a secure context (HTTPS, or localhost for development). Keep the SQLite
+database outside the public `build/web` directory. A ready-to-upload web build
+is also attached to successful GitHub Actions runs as `taskhub-web`.
+
+### Deploy from macOS
+
+Point a domain's A record to `51.77.53.215`, then on a Mac with Flutter installed,
+from the repository root run:
+
+```bash
+./scripts/deploy-macos.sh app.example.com
+```
+
+The script checks Flutter and backend tests, builds the web app, uploads it over
+SSH port 2977, installs the Python API as a systemd service and configures Caddy
+to serve the site over HTTPS. SSH asks for the server password interactively;
+the password is not stored in the script. The SQLite database remains under
+`/var/lib/taskhub/` on repeat deployments. The server must run Debian/Ubuntu
+with systemd and allow inbound ports 80 and 443.
+
 Release builds need your own application ID and signing configuration:
 `android/app/build.gradle.kts` still uses `com.example.taskhub` and debug
 signing for release. Configure these before distributing the APK.

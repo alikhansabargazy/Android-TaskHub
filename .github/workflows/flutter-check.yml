@@ -1,7 +1,7 @@
 name: Flutter checks
 on:
   push:
-    branches: [feature/group-planners]
+    branches: [feature/group-planners, feature/web-app]
   workflow_dispatch:
 jobs:
   flutter:
@@ -16,3 +16,9 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build apk --debug
+      - run: flutter build web --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taskhub-web
+          path: build/web
+          if-no-files-found: error

@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
@@ -79,7 +80,10 @@ class _TaskHubAppState extends State<TaskHubApp> {
 
   Future<void> _syncReminders() async {
     try {
-      await DeadlineReminders.sync(<DeadlineItem>[..._deadlines, ..._groupDeadlines]);
+      await DeadlineReminders.sync(<DeadlineItem>[
+        ..._deadlines,
+        ..._groupDeadlines,
+      ]);
     } catch (error) {
       debugPrint('Could not schedule deadline reminders: $error');
     }
@@ -101,8 +105,9 @@ class _TaskHubAppState extends State<TaskHubApp> {
 
     final List<dynamic> lessonJson =
         jsonDecode(prefs.getString('taskhub_lessons') ?? '[]') as List<dynamic>;
-    final List<dynamic> deadlineJson =
-        jsonDecode(prefs.getString('taskhub_deadlines') ?? '[]') as List<dynamic>;
+    final List<dynamic> deadlineJson = jsonDecode(
+      prefs.getString('taskhub_deadlines') ?? '[]',
+    ) as List<dynamic>;
 
     if (!mounted) return;
     setState(() {
@@ -140,7 +145,9 @@ class _TaskHubAppState extends State<TaskHubApp> {
   }
 
   Future<void> _deleteLesson(String id) async {
-    setState(() => _lessons = _lessons.where((Lesson e) => e.id != id).toList());
+    setState(
+      () => _lessons = _lessons.where((Lesson e) => e.id != id).toList(),
+    );
     await _saveLessons();
   }
 
@@ -171,8 +178,7 @@ class _TaskHubAppState extends State<TaskHubApp> {
 
   Future<void> _deleteDeadline(String id) async {
     setState(() {
-      _deadlines =
-          _deadlines.where((DeadlineItem e) => e.id != id).toList();
+      _deadlines = _deadlines.where((DeadlineItem e) => e.id != id).toList();
     });
     await _saveDeadlines();
   }
@@ -192,75 +198,120 @@ class _TaskHubAppState extends State<TaskHubApp> {
         ),
         fontFamily: 'SF Pro Display',
         textTheme: const TextTheme(
-          headlineMedium: TextStyle(
-            color: kText,
-            fontWeight: FontWeight.w800,
-          ),
-          titleLarge: TextStyle(
-            color: kText,
-            fontWeight: FontWeight.w700,
-          ),
+          headlineMedium: TextStyle(color: kText, fontWeight: FontWeight.w800),
+          titleLarge: TextStyle(color: kText, fontWeight: FontWeight.w700),
           bodyLarge: TextStyle(color: kText),
           bodyMedium: TextStyle(color: kMuted),
         ),
       ),
       home: _loading
-          ? const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            )
-          : Scaffold(
-              body: SafeArea(
-                child: IndexedStack(
-                  index: _tab,
-                  children: <Widget>[
-                    SchedulePage(
-                      lessons: _lessons,
-                      onAddLesson: _addLesson,
-                      onDeleteLesson: _deleteLesson,
-                      onClearSchedule: _clearSchedule,
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final bool wide = constraints.maxWidth >= 900;
+                final Widget content = Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: IndexedStack(
+                      index: _tab,
+                      children: <Widget>[
+                        SchedulePage(
+                          lessons: _lessons,
+                          onAddLesson: _addLesson,
+                          onDeleteLesson: _deleteLesson,
+                          onClearSchedule: _clearSchedule,
+                        ),
+                        DeadlinesPage(
+                          deadlines: _deadlines,
+                          lessons: _lessons,
+                          onAdd: _addDeadline,
+                          onToggle: _toggleDeadline,
+                          onDelete: _deleteDeadline,
+                        ),
+                        const MapPage(),
+                        GroupHubPage(onDeadlinesChanged: _setGroupDeadlines),
+                      ],
                     ),
-                    DeadlinesPage(
-                      deadlines: _deadlines,
-                      lessons: _lessons,
-                      onAdd: _addDeadline,
-                      onToggle: _toggleDeadline,
-                      onDelete: _deleteDeadline,
-                    ),
-                    const MapPage(),
-                    GroupHubPage(onDeadlinesChanged: _setGroupDeadlines),
-                  ],
-                ),
-              ),
-              bottomNavigationBar: NavigationBar(
-                selectedIndex: _tab,
-                onDestinationSelected: (int index) {
-                  setState(() => _tab = index);
-                },
-                indicatorColor: const Color(0xFFDCE9FF),
-                backgroundColor: kCard,
-                destinations: const <NavigationDestination>[
-                  NavigationDestination(
-                    icon: Icon(Icons.calendar_month_outlined),
-                    selectedIcon: Icon(Icons.calendar_month_rounded),
-                    label: 'Schedule',
                   ),
-                  NavigationDestination(
-                    icon: Icon(Icons.flag_outlined),
-                    selectedIcon: Icon(Icons.flag_rounded),
-                    label: 'Deadlines',
+                );
+                return Scaffold(
+                  body: SafeArea(
+                    child: wide
+                        ? Row(
+                            children: <Widget>[
+                              NavigationRail(
+                                selectedIndex: _tab,
+                                onDestinationSelected: (int index) =>
+                                    setState(() => _tab = index),
+                                extended: constraints.maxWidth >= 1250,
+                                labelType: constraints.maxWidth >= 1250
+                                    ? NavigationRailLabelType.none
+                                    : NavigationRailLabelType.all,
+                                destinations: const <NavigationRailDestination>[
+                                  NavigationRailDestination(
+                                    icon: Icon(Icons.calendar_month_outlined),
+                                    selectedIcon: Icon(
+                                      Icons.calendar_month_rounded,
+                                    ),
+                                    label: Text('Schedule'),
+                                  ),
+                                  NavigationRailDestination(
+                                    icon: Icon(Icons.flag_outlined),
+                                    selectedIcon: Icon(Icons.flag_rounded),
+                                    label: Text('Deadlines'),
+                                  ),
+                                  NavigationRailDestination(
+                                    icon: Icon(Icons.map_outlined),
+                                    selectedIcon: Icon(Icons.map_rounded),
+                                    label: Text('Map'),
+                                  ),
+                                  NavigationRailDestination(
+                                    icon: Icon(Icons.groups_outlined),
+                                    selectedIcon: Icon(Icons.groups_rounded),
+                                    label: Text('Groups'),
+                                  ),
+                                ],
+                              ),
+                              const VerticalDivider(width: 1),
+                              Expanded(child: content),
+                            ],
+                          )
+                        : content,
                   ),
-                  NavigationDestination(
-                    icon: Icon(Icons.map_outlined),
-                    selectedIcon: Icon(Icons.map_rounded),
-                    label: 'Map',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.groups_outlined),
-                    selectedIcon: Icon(Icons.groups_rounded),
-                    label: 'Groups',
-                  ),
-                ],
-              ),
+                  bottomNavigationBar: wide
+                      ? null
+                      : NavigationBar(
+                          selectedIndex: _tab,
+                          onDestinationSelected: (int index) {
+                            setState(() => _tab = index);
+                          },
+                          indicatorColor: const Color(0xFFDCE9FF),
+                          backgroundColor: kCard,
+                          destinations: const <NavigationDestination>[
+                            NavigationDestination(
+                              icon: Icon(Icons.calendar_month_outlined),
+                              selectedIcon: Icon(Icons.calendar_month_rounded),
+                              label: 'Schedule',
+                            ),
+                            NavigationDestination(
+                              icon: Icon(Icons.flag_outlined),
+                              selectedIcon: Icon(Icons.flag_rounded),
+                              label: 'Deadlines',
+                            ),
+                            NavigationDestination(
+                              icon: Icon(Icons.map_outlined),
+                              selectedIcon: Icon(Icons.map_rounded),
+                              label: 'Map',
+                            ),
+                            NavigationDestination(
+                              icon: Icon(Icons.groups_outlined),
+                              selectedIcon: Icon(Icons.groups_rounded),
+                              label: 'Groups',
+                            ),
+                          ],
+                        ),
+                );
+              },
             ),
     );
   }
@@ -293,9 +344,7 @@ class _SchedulePageState extends State<SchedulePage> {
       isScrollControlled: true,
       backgroundColor: kCard,
       builder: (BuildContext context) {
-        return LessonEditor(
-          initialDay: kDays[_selectedDay],
-        );
+        return LessonEditor(initialDay: kDays[_selectedDay]);
       },
     );
 
@@ -307,10 +356,9 @@ class _SchedulePageState extends State<SchedulePage> {
   @override
   Widget build(BuildContext context) {
     final String day = kDays[_selectedDay];
-    final List<Lesson> lessons = widget.lessons
-        .where((Lesson e) => e.day == day)
-        .toList()
-      ..sort((Lesson a, Lesson b) => a.start.compareTo(b.start));
+    final List<Lesson> lessons =
+        widget.lessons.where((Lesson e) => e.day == day).toList()
+          ..sort((Lesson a, Lesson b) => a.start.compareTo(b.start));
 
     return Column(
       children: <Widget>[
@@ -335,9 +383,7 @@ class _SchedulePageState extends State<SchedulePage> {
                 selectedColor: kBlue,
                 backgroundColor: kCard,
                 side: BorderSide(
-                  color: selected
-                      ? kBlue
-                      : const Color(0xFFE7E2D9),
+                  color: selected ? kBlue : const Color(0xFFE7E2D9),
                 ),
                 onSelected: (_) {
                   setState(() => _selectedDay = index);
@@ -348,10 +394,7 @@ class _SchedulePageState extends State<SchedulePage> {
         ),
         Expanded(
           child: lessons.isEmpty
-              ? EmptySchedule(
-                  day: day,
-                  onAdd: _openLessonEditor,
-                )
+              ? EmptySchedule(day: day, onAdd: _openLessonEditor)
               : ListView(
                   padding: const EdgeInsets.fromLTRB(18, 14, 18, 120),
                   children: <Widget>[
@@ -360,9 +403,7 @@ class _SchedulePageState extends State<SchedulePage> {
                         Expanded(
                           child: Text(
                             day,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
+                            style: Theme.of(context).textTheme.headlineMedium
                                 ?.copyWith(fontSize: 28),
                           ),
                         ),
@@ -433,11 +474,7 @@ class _SchedulePageState extends State<SchedulePage> {
 }
 
 class EmptySchedule extends StatelessWidget {
-  const EmptySchedule({
-    required this.day,
-    required this.onAdd,
-    super.key,
-  });
+  const EmptySchedule({required this.day, required this.onAdd, super.key});
 
   final String day;
   final VoidCallback onAdd;
@@ -497,11 +534,7 @@ class EmptySchedule extends StatelessWidget {
 }
 
 class LessonCard extends StatelessWidget {
-  const LessonCard({
-    required this.lesson,
-    required this.onDelete,
-    super.key,
-  });
+  const LessonCard({required this.lesson, required this.onDelete, super.key});
 
   final Lesson lesson;
   final VoidCallback onDelete;
@@ -600,10 +633,7 @@ class LessonCard extends StatelessWidget {
 }
 
 class LessonEditor extends StatefulWidget {
-  const LessonEditor({
-    required this.initialDay,
-    super.key,
-  });
+  const LessonEditor({required this.initialDay, super.key});
 
   final String initialDay;
 
@@ -653,9 +683,9 @@ class _LessonEditorState extends State<LessonEditor> {
   void _save() {
     final String subject = _subject.text.trim();
     if (subject.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter the subject name')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter the subject name')));
       return;
     }
 
@@ -712,10 +742,8 @@ class _LessonEditorState extends State<LessonEditor> {
               ),
               items: kDays
                   .map(
-                    (String day) => DropdownMenuItem<String>(
-                      value: day,
-                      child: Text(day),
-                    ),
+                    (String day) =>
+                        DropdownMenuItem<String>(value: day, child: Text(day)),
                   )
                   .toList(),
               onChanged: (String? value) {
@@ -763,10 +791,7 @@ class _LessonEditorState extends State<LessonEditor> {
             const SizedBox(height: 20),
             const Text(
               'Subject color',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: kText,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w800, color: kText),
             ),
             const SizedBox(height: 10),
             Wrap(
@@ -802,10 +827,7 @@ class _LessonEditorState extends State<LessonEditor> {
             const SizedBox(height: 20),
             const Text(
               'Subject icon',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: kText,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w800, color: kText),
             ),
             const SizedBox(height: 10),
             Wrap(
@@ -829,10 +851,7 @@ class _LessonEditorState extends State<LessonEditor> {
                         width: 2,
                       ),
                     ),
-                    child: Icon(
-                      icon,
-                      color: selected ? _color : kMuted,
-                    ),
+                    child: Icon(icon, color: selected ? _color : kMuted),
                   ),
                 );
               }).toList(),
@@ -902,9 +921,7 @@ class DeadlinesPage extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Deadlines',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineMedium
+                  style: Theme.of(context).textTheme.headlineMedium
                       ?.copyWith(fontSize: 28),
                 ),
               ),
@@ -927,9 +944,7 @@ class DeadlinesPage extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: kCard,
                         borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: const Color(0xFFE8E3DA),
-                        ),
+                        border: Border.all(color: const Color(0xFFE8E3DA)),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -1007,10 +1022,7 @@ class DeadlineCard extends StatelessWidget {
         ),
         child: Row(
           children: <Widget>[
-            Checkbox(
-              value: item.completed,
-              onChanged: (_) => onToggle(),
-            ),
+            Checkbox(value: item.completed, onChanged: (_) => onToggle()),
             Container(
               width: 44,
               height: 44,
@@ -1018,10 +1030,7 @@ class DeadlineCard extends StatelessWidget {
                 color: color.withValues(alpha: 0.17),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(
-                subjectIcon(item.iconCodePoint),
-                color: color,
-              ),
+              child: Icon(subjectIcon(item.iconCodePoint), color: color),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1034,8 +1043,9 @@ class DeadlineCard extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
                       color: kText,
-                      decoration:
-                          item.completed ? TextDecoration.lineThrough : null,
+                      decoration: item.completed
+                          ? TextDecoration.lineThrough
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -1044,8 +1054,8 @@ class DeadlineCard extends StatelessWidget {
                   Text(
                     formatDeadline(item.due),
                     style: TextStyle(
-                      color: item.due.isBefore(DateTime.now()) &&
-                              !item.completed
+                      color:
+                          item.due.isBefore(DateTime.now()) && !item.completed
                           ? const Color(0xFFD65050)
                           : kBlue,
                       fontWeight: FontWeight.w700,
@@ -1067,10 +1077,7 @@ class DeadlineCard extends StatelessWidget {
 }
 
 class DeadlineEditor extends StatefulWidget {
-  const DeadlineEditor({
-    required this.lessons,
-    super.key,
-  });
+  const DeadlineEditor({required this.lessons, super.key});
 
   final List<Lesson> lessons;
 
@@ -1112,9 +1119,9 @@ class _DeadlineEditorState extends State<DeadlineEditor> {
 
   void _save() {
     if (_title.text.trim().isEmpty || _subject.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter title and subject')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter title and subject')));
       return;
     }
 
@@ -1143,21 +1150,16 @@ class _DeadlineEditorState extends State<DeadlineEditor> {
         subject: subject,
         due: due,
         completed: false,
-        colorValue:
-            matching?.colorValue ?? kSubjectColors.first.toARGB32(),
-        iconCodePoint:
-            matching?.iconCodePoint ?? Icons.flag_rounded.codePoint,
+        colorValue: matching?.colorValue ?? kSubjectColors.first.toARGB32(),
+        iconCodePoint: matching?.iconCodePoint ?? Icons.flag_rounded.codePoint,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<String> subjects = widget.lessons
-        .map((Lesson e) => e.subject)
-        .toSet()
-        .toList()
-      ..sort();
+    final List<String> subjects =
+        widget.lessons.map((Lesson e) => e.subject).toSet().toList()..sort();
 
     final double keyboard = MediaQuery.viewInsetsOf(context).bottom;
 
@@ -1200,30 +1202,30 @@ class _DeadlineEditorState extends State<DeadlineEditor> {
               optionsBuilder: (TextEditingValue value) {
                 if (value.text.isEmpty) return subjects;
                 return subjects.where(
-                  (String s) => s
-                      .toLowerCase()
-                      .contains(value.text.toLowerCase()),
+                  (String s) =>
+                      s.toLowerCase().contains(value.text.toLowerCase()),
                 );
               },
               onSelected: (String value) => _subject.text = value,
-              fieldViewBuilder: (
-                BuildContext context,
-                TextEditingController controller,
-                FocusNode focusNode,
-                VoidCallback onFieldSubmitted,
-              ) {
-                controller.addListener(() {
-                  _subject.text = controller.text;
-                });
-                return TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'Subject',
-                    border: OutlineInputBorder(),
-                  ),
-                );
-              },
+              fieldViewBuilder:
+                  (
+                    BuildContext context,
+                    TextEditingController controller,
+                    FocusNode focusNode,
+                    VoidCallback onFieldSubmitted,
+                  ) {
+                    controller.addListener(() {
+                      _subject.text = controller.text;
+                    });
+                    return TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      decoration: const InputDecoration(
+                        labelText: 'Subject',
+                        border: OutlineInputBorder(),
+                      ),
+                    );
+                  },
             ),
             const SizedBox(height: 14),
             Row(
@@ -1285,7 +1287,8 @@ class _MapPageState extends State<MapPage> {
 
     // webview_flutter supports Android/iOS/macOS. Open the desktop map in a
     // browser on Linux and Windows, where no WebView implementation is bundled.
-    if (kIsWeb || defaultTargetPlatform == TargetPlatform.linux ||
+    if (kIsWeb ||
+        defaultTargetPlatform == TargetPlatform.linux ||
         defaultTargetPlatform == TargetPlatform.windows) {
       return;
     }
@@ -1304,7 +1307,8 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _openMap() async {
-    if (!await launchUrl(_mapUrl, mode: LaunchMode.externalApplication) && mounted) {
+    if (!await launchUrl(_mapUrl, mode: LaunchMode.externalApplication) &&
+        mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not open the map in a browser')),
       );
@@ -1323,17 +1327,18 @@ class _MapPageState extends State<MapPage> {
               Expanded(
                 child: Text(
                   'University Map',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineMedium
+                  style: Theme.of(context).textTheme.headlineMedium
                       ?.copyWith(fontSize: 28),
                 ),
               ),
               IconButton.filledTonal(
                 tooltip: 'Reload',
                 onPressed: _controller?.reload ?? _openMap,
-                icon: Icon(_controller == null
-                    ? Icons.open_in_browser_rounded : Icons.refresh_rounded),
+                icon: Icon(
+                  _controller == null
+                      ? Icons.open_in_browser_rounded
+                      : Icons.refresh_rounded,
+                ),
               ),
             ],
           ),
@@ -1352,11 +1357,13 @@ class _MapPageState extends State<MapPage> {
               border: Border.all(color: const Color(0xFFE5E0D6)),
             ),
             child: _controller == null
-                ? Center(child: FilledButton.icon(
-                    onPressed: _openMap,
-                    icon: const Icon(Icons.open_in_browser_rounded),
-                    label: const Text('Open AITU map in browser'),
-                  ))
+                ? Center(
+                    child: FilledButton.icon(
+                      onPressed: _openMap,
+                      icon: const Icon(Icons.open_in_browser_rounded),
+                      label: const Text('Open AITU map in browser'),
+                    ),
+                  )
                 : WebViewWidget(controller: _controller!),
           ),
         ),
@@ -1366,10 +1373,7 @@ class _MapPageState extends State<MapPage> {
 }
 
 class TaskHubHeader extends StatelessWidget {
-  const TaskHubHeader({
-    required this.subtitle,
-    super.key,
-  });
+  const TaskHubHeader({required this.subtitle, super.key});
 
   final String subtitle;
 
@@ -1420,10 +1424,7 @@ class TaskHubHeader extends StatelessWidget {
               color: const Color(0xFFE7F0FF),
               borderRadius: BorderRadius.circular(15),
             ),
-            child: const Icon(
-              Icons.notifications_none_rounded,
-              color: kBlue,
-            ),
+            child: const Icon(Icons.notifications_none_rounded, color: kBlue),
           ),
         ],
       ),
@@ -1432,11 +1433,7 @@ class TaskHubHeader extends StatelessWidget {
 }
 
 class MetaText extends StatelessWidget {
-  const MetaText({
-    required this.icon,
-    required this.text,
-    super.key,
-  });
+  const MetaText({required this.icon, required this.text, super.key});
 
   final IconData icon;
   final String text;
@@ -1450,10 +1447,7 @@ class MetaText extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           text,
-          style: const TextStyle(
-            color: kMuted,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(color: kMuted, fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -1482,15 +1476,15 @@ class Lesson {
   final int iconCodePoint;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'day': day,
-        'subject': subject,
-        'room': room,
-        'start': start,
-        'end': end,
-        'colorValue': colorValue,
-        'iconCodePoint': iconCodePoint,
-      };
+    'id': id,
+    'day': day,
+    'subject': subject,
+    'room': room,
+    'start': start,
+    'end': end,
+    'colorValue': colorValue,
+    'iconCodePoint': iconCodePoint,
+  };
 
   factory Lesson.fromJson(Map<String, dynamic> json) {
     return Lesson(
@@ -1525,9 +1519,7 @@ class DeadlineItem {
   final int colorValue;
   final int iconCodePoint;
 
-  DeadlineItem copyWith({
-    bool? completed,
-  }) {
+  DeadlineItem copyWith({bool? completed}) {
     return DeadlineItem(
       id: id,
       title: title,
@@ -1540,14 +1532,14 @@ class DeadlineItem {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'title': title,
-        'subject': subject,
-        'due': due.toIso8601String(),
-        'completed': completed,
-        'colorValue': colorValue,
-        'iconCodePoint': iconCodePoint,
-      };
+    'id': id,
+    'title': title,
+    'subject': subject,
+    'due': due.toIso8601String(),
+    'completed': completed,
+    'colorValue': colorValue,
+    'iconCodePoint': iconCodePoint,
+  };
 
   factory DeadlineItem.fromJson(Map<String, dynamic> json) {
     return DeadlineItem(

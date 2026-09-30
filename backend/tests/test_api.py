@@ -133,3 +133,31 @@ class GroupTest(unittest.TestCase):
         groups = self.request('GET', '/api/v1/feed', token=member)[1]['groups']
         self.assertEqual({g['name']: g['lessons'][0]['subject'] for g in groups},
                          {'Group A': 'Group A', 'Group B': 'Group B'})
+
+
+class WebTest(unittest.TestCase):
+    def test_serves_web_assets_and_rejects_missing_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            (root / 'index.html').write_text('<!doctype html><title>TaskHub</title>')
+            (root / 'main.dart.js').write_text('console.log("app")')
+            path = root / 'db.sqlite3'
+            initialize(path)
+            server = ThreadingHTTPServer(('127.0.0.1', 0), make_handler(path, root))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                for route, status, marker in [('/', 200, b'TaskHub'),
+                                               ('/main.dart.js', 200, b'console'),
+                                               ('/groups/1', 200, b'TaskHub'),
+                                               ('/missing.js', 404, b'not_found')]:
+                    connection = HTTPConnection('127.0.0.1', server.server_port)
+                    connection.request('GET', route)
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, status)
+                    self.assertIn(marker, response.read())
+                    connection.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join()

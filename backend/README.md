@@ -20,6 +20,9 @@ LAN address; the Android emulator reaches the host at `10.0.2.2:8000`. A real
 public deployment **must** use HTTPS at a reverse proxy. Back up the SQLite
 file together with its `-wal` and `-shm` files or use SQLite's backup API.
 Set `TASKHUB_CORS_ORIGIN` to the exact origin of a web frontend if needed.
+Set `TASKHUB_WEB_DIR=./build/web` to serve a Flutter web build from this same
+server. Serve public deployments through HTTPS, so browser token storage works
+and login credentials are encrypted in transit.
 
 ## API
 

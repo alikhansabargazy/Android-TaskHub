@@ -1,12 +1,11 @@
 {
-    "name": "taskhub",
-    "short_name": "taskhub",
+    "name": "TaskHub",
+    "short_name": "TaskHub",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#F7F4ED",
+    "theme_color": "#F7F4ED",
+    "description": "Student planner with classes, deadlines and groups.",
     "prefer_related_applications": false,
     "icons": [
         {

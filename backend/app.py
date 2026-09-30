@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import mimetypes
 import os
 import re
 import secrets
@@ -108,8 +109,10 @@ def initialize(path: Path = DB_PATH):
         """)
 
 
-def make_handler(path: Path = DB_PATH):
+def make_handler(path: Path = DB_PATH, web_dir: Path | None = None):
     allowed_origin = os.environ.get("TASKHUB_CORS_ORIGIN", "")
+    if web_dir is not None:
+        web_dir = web_dir.resolve()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "TaskHubAPI/1"
@@ -152,6 +155,30 @@ def make_handler(path: Path = DB_PATH):
                 raise ValueError("expected a JSON object")
             return result
 
+        def _web(self, route):
+            if web_dir is None or not web_dir.is_dir():
+                return False
+            # Flutter uses path URLs for assets. Unknown routes without an
+            # extension fall back to the app shell for browser navigation.
+            candidate = (web_dir / route.lstrip("/")).resolve()
+            if not candidate.is_relative_to(web_dir):
+                self._send(404, {"error": "not_found"})
+                return True
+            if route == "/" or (not candidate.is_file() and "." not in Path(route).name):
+                candidate = web_dir / "index.html"
+            if not candidate.is_file():
+                self._send(404, {"error": "not_found"})
+                return True
+            body = candidate.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", mimetypes.guess_type(candidate.name)[0] or "application/octet-stream")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-cache" if candidate.name == "index.html" else "public, max-age=3600")
+            self.end_headers()
+            self.wfile.write(body)
+            return True
+
         def _user(self, db):
             auth = self.headers.get("Authorization", "")
             if not auth.startswith("Bearer "):
@@ -171,6 +198,8 @@ def make_handler(path: Path = DB_PATH):
             method = self.command
             if (method, route) == ("GET", "/health"):
                 return self._send(200, {"status": "ok"})
+            if method == "GET" and not route.startswith("/api/") and self._web(route):
+                return
             if route in ("/api/v1/auth/register", "/api/v1/auth/login") and method == "POST":
                 data = self._body()
                 email = data.get("email", "")
@@ -401,7 +430,8 @@ def main():
     host = os.environ.get("TASKHUB_HOST", "127.0.0.1")
     port = int(os.environ.get("TASKHUB_PORT", "8000"))
     initialize(DB_PATH)
-    server = ThreadingHTTPServer((host, port), make_handler(DB_PATH))
+    web_dir = os.environ.get("TASKHUB_WEB_DIR")
+    server = ThreadingHTTPServer((host, port), make_handler(DB_PATH, Path(web_dir) if web_dir else None))
     print(f"TaskHub API listening on http://{host}:{port}", flush=True)
     try:
         server.serve_forever()
