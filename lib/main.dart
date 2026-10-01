@@ -109,6 +109,15 @@ class _TaskHubAppState extends State<TaskHubApp> {
     await _saveLessons();
   }
 
+  Future<void> _updateLesson(Lesson lesson) async {
+    setState(() {
+      _lessons = _lessons
+          .map((Lesson e) => e.id == lesson.id ? lesson : e)
+          .toList();
+    });
+    await _saveLessons();
+  }
+
   Future<void> _deleteLesson(String id) async {
     setState(() => _lessons = _lessons.where((Lesson e) => e.id != id).toList());
     await _saveLessons();
@@ -121,6 +130,15 @@ class _TaskHubAppState extends State<TaskHubApp> {
 
   Future<void> _addDeadline(DeadlineItem item) async {
     setState(() => _deadlines = <DeadlineItem>[..._deadlines, item]);
+    await _saveDeadlines();
+  }
+
+  Future<void> _updateDeadline(DeadlineItem item) async {
+    setState(() {
+      _deadlines = _deadlines
+          .map((DeadlineItem e) => e.id == item.id ? item : e)
+          .toList();
+    });
     await _saveDeadlines();
   }
 
@@ -180,7 +198,9 @@ class _TaskHubAppState extends State<TaskHubApp> {
                   children: <Widget>[
                     SchedulePage(
                       lessons: _lessons,
+                      deadlines: _deadlines,
                       onAddLesson: _addLesson,
+                      onUpdateLesson: _updateLesson,
                       onDeleteLesson: _deleteLesson,
                       onClearSchedule: _clearSchedule,
                     ),
@@ -188,6 +208,7 @@ class _TaskHubAppState extends State<TaskHubApp> {
                       deadlines: _deadlines,
                       lessons: _lessons,
                       onAdd: _addDeadline,
+                      onUpdate: _updateDeadline,
                       onToggle: _toggleDeadline,
                       onDelete: _deleteDeadline,
                     ),
@@ -228,14 +249,18 @@ class _TaskHubAppState extends State<TaskHubApp> {
 class SchedulePage extends StatefulWidget {
   const SchedulePage({
     required this.lessons,
+    required this.deadlines,
     required this.onAddLesson,
+    required this.onUpdateLesson,
     required this.onDeleteLesson,
     required this.onClearSchedule,
     super.key,
   });
 
   final List<Lesson> lessons;
+  final List<DeadlineItem> deadlines;
   final Future<void> Function(Lesson lesson) onAddLesson;
+  final Future<void> Function(Lesson lesson) onUpdateLesson;
   final Future<void> Function(String id) onDeleteLesson;
   final Future<void> Function() onClearSchedule;
 
@@ -246,20 +271,25 @@ class SchedulePage extends StatefulWidget {
 class _SchedulePageState extends State<SchedulePage> {
   int _selectedDay = DateTime.now().weekday - 1;
 
-  Future<void> _openLessonEditor() async {
+  Future<void> _openLessonEditor([Lesson? existing]) async {
     final Lesson? lesson = await showModalBottomSheet<Lesson>(
       context: context,
       isScrollControlled: true,
       backgroundColor: kCard,
       builder: (BuildContext context) {
         return LessonEditor(
-          initialDay: kDays[_selectedDay],
+          initialDay: existing?.day ?? kDays[_selectedDay],
+          initialLesson: existing,
         );
       },
     );
 
-    if (lesson != null) {
+    if (lesson == null) return;
+
+    if (existing == null) {
       await widget.onAddLesson(lesson);
+    } else {
+      await widget.onUpdateLesson(lesson);
     }
   }
 
@@ -270,6 +300,11 @@ class _SchedulePageState extends State<SchedulePage> {
         .where((Lesson e) => e.day == day)
         .toList()
       ..sort((Lesson a, Lesson b) => a.start.compareTo(b.start));
+
+    final List<DeadlineItem> upcoming = widget.deadlines
+        .where((DeadlineItem e) => !e.completed)
+        .toList()
+      ..sort((DeadlineItem a, DeadlineItem b) => a.due.compareTo(b.due));
 
     return Column(
       children: <Widget>[
@@ -294,9 +329,7 @@ class _SchedulePageState extends State<SchedulePage> {
                 selectedColor: kBlue,
                 backgroundColor: kCard,
                 side: BorderSide(
-                  color: selected
-                      ? kBlue
-                      : const Color(0xFFE7E2D9),
+                  color: selected ? kBlue : const Color(0xFFE7E2D9),
                 ),
                 onSelected: (_) {
                   setState(() => _selectedDay = index);
@@ -305,6 +338,13 @@ class _SchedulePageState extends State<SchedulePage> {
             },
           ),
         ),
+        if (upcoming.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 2),
+            child: UpcomingDeadlinesCard(
+              items: upcoming.take(3).toList(),
+            ),
+          ),
         Expanded(
           child: lessons.isEmpty
               ? EmptySchedule(
@@ -338,6 +378,7 @@ class _SchedulePageState extends State<SchedulePage> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: LessonCard(
                           lesson: lesson,
+                          onEdit: () => _openLessonEditor(lesson),
                           onDelete: () => widget.onDeleteLesson(lesson.id),
                         ),
                       ),
@@ -391,6 +432,86 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 }
 
+
+class UpcomingDeadlinesCard extends StatelessWidget {
+  const UpcomingDeadlinesCard({
+    required this.items,
+    super.key,
+  });
+
+  final List<DeadlineItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF2FF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFD6E5FF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Row(
+            children: <Widget>[
+              Icon(Icons.upcoming_rounded, color: kBlue, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Upcoming deadlines',
+                style: TextStyle(
+                  color: kText,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...items.map(
+            (DeadlineItem item) => Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Color(item.colorValue),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${item.title} • ${item.subject}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: kText,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    formatDeadline(item.due),
+                    style: const TextStyle(
+                      color: kBlue,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class EmptySchedule extends StatelessWidget {
   const EmptySchedule({
     required this.day,
@@ -438,7 +559,7 @@ class EmptySchedule extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Build your own schedule and choose a color and icon for every subject.',
+                'Start by adding a class. You can edit its time, room, color and icon later.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
@@ -458,11 +579,13 @@ class EmptySchedule extends StatelessWidget {
 class LessonCard extends StatelessWidget {
   const LessonCard({
     required this.lesson,
+    required this.onEdit,
     required this.onDelete,
     super.key,
   });
 
   final Lesson lesson;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
@@ -546,6 +669,11 @@ class LessonCard extends StatelessWidget {
                       ),
                     ),
                     IconButton(
+                      tooltip: 'Edit',
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                    IconButton(
                       tooltip: 'Delete',
                       onPressed: onDelete,
                       icon: const Icon(Icons.close_rounded),
@@ -564,10 +692,12 @@ class LessonCard extends StatelessWidget {
 class LessonEditor extends StatefulWidget {
   const LessonEditor({
     required this.initialDay,
+    this.initialLesson,
     super.key,
   });
 
   final String initialDay;
+  final Lesson? initialLesson;
 
   @override
   State<LessonEditor> createState() => _LessonEditorState();
@@ -586,7 +716,21 @@ class _LessonEditorState extends State<LessonEditor> {
   @override
   void initState() {
     super.initState();
-    _day = widget.initialDay;
+
+    final Lesson? lesson = widget.initialLesson;
+    _day = lesson?.day ?? widget.initialDay;
+
+    if (lesson != null) {
+      _subject.text = lesson.subject;
+      _room.text = lesson.room;
+      _start = parseTime(lesson.start);
+      _end = parseTime(lesson.end);
+      _color = Color(lesson.colorValue);
+      _icon = IconData(
+        lesson.iconCodePoint,
+        fontFamily: 'MaterialIcons',
+      );
+    }
   }
 
   @override
@@ -624,7 +768,8 @@ class _LessonEditorState extends State<LessonEditor> {
     Navigator.pop(
       context,
       Lesson(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        id: widget.initialLesson?.id ??
+            DateTime.now().microsecondsSinceEpoch.toString(),
         day: _day,
         subject: subject,
         room: _room.text.trim(),
@@ -657,9 +802,9 @@ class _LessonEditorState extends State<LessonEditor> {
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Import / create a class',
-              style: TextStyle(
+            Text(
+              widget.initialLesson == null ? 'Create a class' : 'Edit class',
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w900,
                 color: kText,
@@ -804,9 +949,11 @@ class _LessonEditorState extends State<LessonEditor> {
               width: double.infinity,
               child: FilledButton(
                 onPressed: _save,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  child: Text('Save class'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Text(
+                    widget.initialLesson == null ? 'Save class' : 'Save changes',
+                  ),
                 ),
               ),
             ),
@@ -822,6 +969,7 @@ class DeadlinesPage extends StatelessWidget {
     required this.deadlines,
     required this.lessons,
     required this.onAdd,
+    required this.onUpdate,
     required this.onToggle,
     required this.onDelete,
     super.key,
@@ -830,19 +978,27 @@ class DeadlinesPage extends StatelessWidget {
   final List<DeadlineItem> deadlines;
   final List<Lesson> lessons;
   final Future<void> Function(DeadlineItem item) onAdd;
+  final Future<void> Function(DeadlineItem item) onUpdate;
   final Future<void> Function(String id) onToggle;
   final Future<void> Function(String id) onDelete;
 
-  Future<void> _openAdd(BuildContext context) async {
+  Future<void> _openAdd(BuildContext context, [DeadlineItem? existing]) async {
     final DeadlineItem? item = await showModalBottomSheet<DeadlineItem>(
       context: context,
       isScrollControlled: true,
       backgroundColor: kCard,
-      builder: (_) => DeadlineEditor(lessons: lessons),
+      builder: (_) => DeadlineEditor(
+        lessons: lessons,
+        initialItem: existing,
+      ),
     );
 
-    if (item != null) {
+    if (item == null) return;
+
+    if (existing == null) {
       await onAdd(item);
+    } else {
+      await onUpdate(item);
     }
   }
 
@@ -931,6 +1087,7 @@ class DeadlinesPage extends StatelessWidget {
                     return DeadlineCard(
                       item: item,
                       onToggle: () => onToggle(item.id),
+                      onEdit: () => _openAdd(context, item),
                       onDelete: () => onDelete(item.id),
                     );
                   },
@@ -945,12 +1102,14 @@ class DeadlineCard extends StatelessWidget {
   const DeadlineCard({
     required this.item,
     required this.onToggle,
+    required this.onEdit,
     required this.onDelete,
     super.key,
   });
 
   final DeadlineItem item;
   final VoidCallback onToggle;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
@@ -1020,6 +1179,11 @@ class DeadlineCard extends StatelessWidget {
               ),
             ),
             IconButton(
+              tooltip: 'Edit',
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
               tooltip: 'Delete',
               onPressed: onDelete,
               icon: const Icon(Icons.delete_outline_rounded),
@@ -1034,10 +1198,12 @@ class DeadlineCard extends StatelessWidget {
 class DeadlineEditor extends StatefulWidget {
   const DeadlineEditor({
     required this.lessons,
+    this.initialItem,
     super.key,
   });
 
   final List<Lesson> lessons;
+  final DeadlineItem? initialItem;
 
   @override
   State<DeadlineEditor> createState() => _DeadlineEditorState();
@@ -1049,6 +1215,19 @@ class _DeadlineEditorState extends State<DeadlineEditor> {
 
   DateTime _date = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _time = const TimeOfDay(hour: 23, minute: 59);
+
+  @override
+  void initState() {
+    super.initState();
+
+    final DeadlineItem? item = widget.initialItem;
+    if (item != null) {
+      _title.text = item.title;
+      _subject.text = item.subject;
+      _date = item.due;
+      _time = TimeOfDay(hour: item.due.hour, minute: item.due.minute);
+    }
+  }
 
   @override
   void dispose() {
@@ -1103,15 +1282,18 @@ class _DeadlineEditorState extends State<DeadlineEditor> {
     Navigator.pop(
       context,
       DeadlineItem(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        id: widget.initialItem?.id ??
+            DateTime.now().microsecondsSinceEpoch.toString(),
         title: _title.text.trim(),
         subject: subject,
         due: due,
-        completed: false,
-        colorValue:
-            matching?.colorValue ?? kSubjectColors.first.toARGB32(),
-        iconCodePoint:
-            matching?.iconCodePoint ?? Icons.flag_rounded.codePoint,
+        completed: widget.initialItem?.completed ?? false,
+        colorValue: matching?.colorValue ??
+            widget.initialItem?.colorValue ??
+            kSubjectColors.first.toARGB32(),
+        iconCodePoint: matching?.iconCodePoint ??
+            widget.initialItem?.iconCodePoint ??
+            Icons.flag_rounded.codePoint,
       ),
     );
   }
@@ -1143,9 +1325,9 @@ class _DeadlineEditorState extends State<DeadlineEditor> {
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Add deadline',
-              style: TextStyle(
+            Text(
+              widget.initialItem == null ? 'Add deadline' : 'Edit deadline',
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w900,
                 color: kText,
@@ -1177,6 +1359,12 @@ class _DeadlineEditorState extends State<DeadlineEditor> {
                 FocusNode focusNode,
                 VoidCallback onFieldSubmitted,
               ) {
+                if (controller.text.isEmpty && _subject.text.isNotEmpty) {
+                  controller.text = _subject.text;
+                  controller.selection = TextSelection.collapsed(
+                    offset: controller.text.length,
+                  );
+                }
                 controller.addListener(() {
                   _subject.text = controller.text;
                 });
@@ -1219,9 +1407,13 @@ class _DeadlineEditorState extends State<DeadlineEditor> {
               width: double.infinity,
               child: FilledButton(
                 onPressed: _save,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  child: Text('Save deadline'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Text(
+                    widget.initialItem == null
+                        ? 'Save deadline'
+                        : 'Save changes',
+                  ),
                 ),
               ),
             ),
@@ -1249,7 +1441,6 @@ class _MapPageState extends State<MapPage> {
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(kMilk)
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {
@@ -1266,7 +1457,7 @@ class _MapPageState extends State<MapPage> {
       children: <Widget>[
         const TaskHubHeader(subtitle: 'AITU campus map'),
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
           child: Row(
             children: <Widget>[
               Expanded(
@@ -1284,6 +1475,34 @@ class _MapPageState extends State<MapPage> {
                 icon: const Icon(Icons.refresh_rounded),
               ),
             ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF2FF),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFD6E5FF)),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(Icons.info_outline_rounded, color: kBlue, size: 20),
+                SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    'Zoom in and tap room or area labels to find your classroom. '
+                    'Use the room code from your schedule as a guide.',
+                    style: TextStyle(
+                      color: kText,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         if (_progress < 100)
@@ -1523,6 +1742,25 @@ String shortDay(String day) {
     default:
       return day;
   }
+}
+
+
+TimeOfDay parseTime(String value) {
+  final List<String> parts = value.split(':');
+  if (parts.length != 2) {
+    return const TimeOfDay(hour: 9, minute: 0);
+  }
+
+  final int? hour = int.tryParse(parts[0]);
+  final int? minute = int.tryParse(parts[1]);
+  if (hour == null || minute == null) {
+    return const TimeOfDay(hour: 9, minute: 0);
+  }
+
+  return TimeOfDay(
+    hour: hour.clamp(0, 23).toInt(),
+    minute: minute.clamp(0, 59).toInt(),
+  );
 }
 
 String formatTime(TimeOfDay time) {
